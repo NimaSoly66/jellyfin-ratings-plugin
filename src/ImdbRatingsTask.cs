@@ -41,6 +41,12 @@ public class ImdbRatingsTask : IScheduledTask
             IsVirtualItem = false,
         });
 
+        if (movies.Count == 0)
+        {
+            progress.Report(100);
+            return;
+        }
+
         int updated = 0;
 
         for (int i = 0; i < movies.Count; i++)
