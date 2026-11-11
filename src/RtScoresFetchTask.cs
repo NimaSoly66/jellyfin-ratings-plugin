@@ -61,6 +61,9 @@ public class RtScoresFetchTask : IScheduledTask
             IsVirtualItem = false,
         });
 
+        if (movies.Count == 0)
+            return;
+
         // Load slug cache
         var slugCache = await LoadJsonAsync<Dictionary<string, string>>(SlugCachePath, cancellationToken)
             ?? new Dictionary<string, string>();
