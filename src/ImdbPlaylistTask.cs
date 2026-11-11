@@ -53,6 +53,9 @@ public class ImdbPlaylistTask : IScheduledTask
             Recursive = true,
         });
 
+        if (movies.Count == 0)
+            return;
+
         var moviesByImdb = new Dictionary<string, BaseItem>();
         foreach (var movie in movies)
         {
@@ -122,7 +125,7 @@ public class ImdbPlaylistTask : IScheduledTask
         foreach (var stale in allPlaylists.OfType<Playlist>().Where(p => p.Id != playlist.Id
             && p.Name.Contains("IMDb Top 250", StringComparison.OrdinalIgnoreCase)))
         {
-            if (stale.LinkedChildren.Length == 0)
+            if (stale.GetManageableItems().Count == 0)
                 _libraryManager.DeleteItem(stale, new DeleteOptions { DeleteFileLocation = true });
         }
 
@@ -133,9 +136,9 @@ public class ImdbPlaylistTask : IScheduledTask
         progress.Report(80);
 
         // Remove existing items and re-add in rank order
-        var existingEntryIds = playlist.LinkedChildren
-            .Select(lc => lc.ItemId?.ToString("N") ?? lc.LibraryItemId)
-            .Where(id => id != null)
+        var existingEntryIds = playlist.GetManageableItems()
+            .Select(entry => entry.Item1.ItemId?.ToString("N"))
+            .Where(id => !string.IsNullOrEmpty(id))
             .ToArray();
         if (existingEntryIds.Length > 0)
         {
@@ -148,6 +151,7 @@ public class ImdbPlaylistTask : IScheduledTask
         await _playlistManager.AddItemToPlaylistAsync(
             Guid.Parse(config.PlaylistId),
             itemIds,
+            null,
             userId).ConfigureAwait(false);
 
         progress.Report(100);
@@ -155,7 +159,7 @@ public class ImdbPlaylistTask : IScheduledTask
 
     private static void ApplyPlaylistImage(BaseItem playlist)
     {
-        const string imagePath = "/config/data/imdb_playlist_image.jpg";
+        var imagePath = Plugin.DataFile("imdb_playlist_image.jpg");
         if (!File.Exists(imagePath)) return;
 
         playlist.SetImage(new ItemImageInfo
