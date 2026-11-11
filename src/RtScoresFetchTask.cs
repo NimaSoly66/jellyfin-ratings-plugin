@@ -17,15 +17,24 @@ public class RtAudienceEntry
 
     [System.Text.Json.Serialization.JsonPropertyName("certified")]
     public bool Certified { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("criticScore")]
+    public int? CriticScore { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("criticCertified")]
+    public bool CriticCertified { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("verifiedHot")]
+    public bool VerifiedHot { get; set; }
 }
 
 public class RtScoresFetchTask : IScheduledTask
 {
     private readonly ILibraryManager _libraryManager;
     private static readonly HttpClient _httpClient = new();
-    private const string ItemScoresPath = "/config/data/rt_item_scores.json";
-    private const string CertifiedCriticsPath = "/config/data/rt_certified_critics.json";
-    private const string SlugCachePath = "/config/data/rt_slug_cache.json";
+    private static string ItemScoresPath => Plugin.DataFile("rt_item_scores.json");
+    private static string CertifiedCriticsPath => Plugin.DataFile("rt_certified_critics.json");
+    private static string SlugCachePath => Plugin.DataFile("rt_slug_cache.json");
     private const double RequestDelay = 1.5;
 
     public RtScoresFetchTask(ILibraryManager libraryManager)
@@ -62,7 +71,6 @@ public class RtScoresFetchTask : IScheduledTask
 
         var itemScores = new Dictionary<string, RtAudienceEntry>();
         var certifiedCritics = new List<string>();
-        int fetched = 0;
 
         for (int i = 0; i < movies.Count; i++)
         {
@@ -77,24 +85,36 @@ public class RtScoresFetchTask : IScheduledTask
                 continue;
             }
 
-            // Use cached result if slug is known and we already have data
-            if (existingScores.ContainsKey(jfId) && slugCache.ContainsKey(imdbId))
+            // Reuse complete cache entries; older audience-only entries are refreshed
+            // once so the critic score and both certification flags can be populated.
+            if (existingScores.TryGetValue(jfId, out var cached) &&
+                slugCache.ContainsKey(imdbId) && cached.CriticScore.HasValue)
             {
-                itemScores[jfId] = existingScores[jfId];
-                // We don't know critic certified from existing data, skip
+                itemScores[jfId] = cached;
+                if (cached.CriticCertified)
+                    certifiedCritics.Add(jfId);
                 progress.Report((double)(i + 1) / movies.Count * 100);
                 continue;
             }
+
+            if (existingScores.TryGetValue(jfId, out cached))
+                itemScores[jfId] = cached;
 
             var scorecard = await FetchRtScorecard(movie.Name, movie.ProductionYear, imdbId, slugCache, cancellationToken);
             if (scorecard != null)
             {
                 var audScore = scorecard.AudienceScore;
                 var audCertified = scorecard.AudienceCertified;
-                itemScores[jfId] = new RtAudienceEntry { Score = audScore, Certified = audCertified };
+                itemScores[jfId] = new RtAudienceEntry
+                {
+                    Score = audScore,
+                    Certified = audCertified,
+                    CriticScore = scorecard.CriticScore,
+                    CriticCertified = scorecard.CriticCertified,
+                    VerifiedHot = scorecard.VerifiedHot,
+                };
                 if (scorecard.CriticCertified)
                     certifiedCritics.Add(jfId);
-                fetched++;
             }
 
             progress.Report((double)(i + 1) / movies.Count * 100);
@@ -204,19 +224,28 @@ public class RtScoresFetchTask : IScheduledTask
             if (!root.TryGetProperty("audienceScore", out var aud)) return null;
             if (!aud.TryGetProperty("score", out var audScoreEl)) return null;
 
-            var audScore = int.Parse(audScoreEl.GetString()!, CultureInfo.InvariantCulture);
-            var audCertified = aud.TryGetProperty("certified", out var ac) && ac.GetBoolean();
+            if (!int.TryParse(audScoreEl.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var audScore))
+                return null;
+            var audCertified = aud.TryGetProperty("certified", out var ac) && ac.ValueKind == JsonValueKind.True;
+            var verifiedHot = audCertified;
 
+            int? criticScore = null;
             var criticCertified = false;
-            if (root.TryGetProperty("criticsScore", out var crit) &&
-                crit.TryGetProperty("certified", out var cc))
-                criticCertified = cc.GetBoolean();
+            if (root.TryGetProperty("criticsScore", out var crit))
+            {
+                if (crit.TryGetProperty("score", out var criticScoreEl) &&
+                    int.TryParse(criticScoreEl.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCriticScore))
+                    criticScore = parsedCriticScore;
+                criticCertified = crit.TryGetProperty("certified", out var cc) && cc.ValueKind == JsonValueKind.True;
+            }
 
             return new RtScorecard
             {
                 AudienceScore = audScore,
                 AudienceCertified = audCertified,
+                CriticScore = criticScore,
                 CriticCertified = criticCertified,
+                VerifiedHot = verifiedHot,
             };
         }
         catch
@@ -296,6 +325,8 @@ public class RtScoresFetchTask : IScheduledTask
     {
         public int AudienceScore { get; set; }
         public bool AudienceCertified { get; set; }
+        public int? CriticScore { get; set; }
         public bool CriticCertified { get; set; }
+        public bool VerifiedHot { get; set; }
     }
 }
