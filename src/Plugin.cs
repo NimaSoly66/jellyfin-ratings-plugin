@@ -12,10 +12,13 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 
     public static string DataDirectory { get; private set; } = string.Empty;
 
+    private static string _legacyDataDirectory = string.Empty;
+
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+        _legacyDataDirectory = applicationPaths.DataPath;
         DataDirectory = Path.Combine(applicationPaths.DataPath, "plugins", "MovieRatings");
         Directory.CreateDirectory(DataDirectory);
     }
@@ -37,7 +40,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         var destination = Path.Combine(DataDirectory, safeName);
         if (!File.Exists(destination) && Instance is not null)
         {
-            var legacy = Path.Combine(Instance.ApplicationPaths.DataPath, safeName);
+            var legacy = Path.Combine(_legacyDataDirectory, safeName);
             if (File.Exists(legacy))
             {
                 try
