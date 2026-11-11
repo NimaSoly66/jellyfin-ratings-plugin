@@ -38,7 +38,7 @@ public static class ImdbDatasetCache
     private static DateTime _chartFileTime = DateTime.MinValue;
 
     /// <summary>Path to a local JSON file with the real IMDb chart (fetched externally).</summary>
-    private const string ChartFilePath = "/config/data/imdb_chart.json";
+    private static string ChartFilePath => Plugin.DataFile("imdb_chart.json");
 
     public static async Task<Dictionary<string, int>> GetTop250Async(
         TimeSpan maxAge, CancellationToken cancellationToken)
@@ -79,17 +79,18 @@ public static class ImdbDatasetCache
     {
         try
         {
+            var chartFilePath = ChartFilePath;
             if (_chartFileCache != null && DateTime.UtcNow - _chartFileTime < maxAge)
                 return _chartFileCache;
 
-            if (!File.Exists(ChartFilePath))
+            if (!File.Exists(chartFilePath))
                 return null;
 
-            var fileAge = DateTime.UtcNow - File.GetLastWriteTimeUtc(ChartFilePath);
+            var fileAge = DateTime.UtcNow - File.GetLastWriteTimeUtc(chartFilePath);
             if (fileAge > TimeSpan.FromDays(7))
                 return null; // too stale, fall back to datasets
 
-            var json = File.ReadAllText(ChartFilePath);
+            var json = File.ReadAllText(chartFilePath);
             var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(json);
             if (parsed != null && parsed.Count >= 200)
             {
