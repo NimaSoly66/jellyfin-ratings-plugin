@@ -154,7 +154,13 @@ public class LibraryChangedHandler : IHostedService, IDisposable
             if (!int.TryParse(scoreEl.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var score))
                 return null;
             var certified = aud.TryGetProperty("certified", out var ac) && ac.ValueKind == JsonValueKind.True;
-            var verifiedHot = certified;
+            var verifiedHot = aud.TryGetProperty("verifiedHot", out var vh) && vh.ValueKind == JsonValueKind.True;
+            if (!verifiedHot && aud.TryGetProperty("certifiedFresh", out var cf) &&
+                cf.ValueKind == JsonValueKind.String &&
+                string.Equals(cf.GetString(), "certified", StringComparison.OrdinalIgnoreCase))
+                verifiedHot = true;
+            if (!verifiedHot)
+                verifiedHot = certified;
             int? criticScore = null;
             var criticCertified = false;
             if (root.TryGetProperty("criticsScore", out var crit))
@@ -188,6 +194,7 @@ public class LibraryChangedHandler : IHostedService, IDisposable
             CriticScore = criticScore,
             CriticCertified = criticCertified,
             VerifiedHot = verifiedHot,
+            CriticScoreFetched = true,
         };
         await File.WriteAllTextAsync(itemScoresPath, JsonSerializer.Serialize(scores)).ConfigureAwait(false);
 
