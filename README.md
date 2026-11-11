@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/v/release/jpedrofontes/jellyfin-ratings-plugin?style=flat-square" alt="Release" />
   <img src="https://img.shields.io/github/license/jpedrofontes/jellyfin-ratings-plugin?style=flat-square" alt="License" />
-  <img src="https://img.shields.io/badge/jellyfin-10.11%2B-00a4dc?style=flat-square&logo=jellyfin" alt="Jellyfin 10.11+" />
+  <img src="https://img.shields.io/badge/jellyfin-12.0%2B-00a4dc?style=flat-square&logo=jellyfin" alt="Jellyfin 12.0+" />
 </p>
 
 A Jellyfin plugin that syncs **IMDb ratings**, fetches **Rotten Tomatoes audience and critic scores**, and maintains an **IMDb Top 250 playlist**.
@@ -51,9 +51,9 @@ Go to **Dashboard > Plugins > Movie Ratings (IMDb + RT)**:
 | **Enable RT Scores Task** | Toggle the RT scores fetch on/off. |
 | **Chart Cache (hours)** | How long to cache the IMDb chart before re-fetching (default: 24h). |
 
-## RT Badges Setup (Docker)
+## RT Badges Setup (advanced)
 
-To display both tomato and popcorn badges in the web UI, you need to mount a few files into the Jellyfin container:
+The RT task stores its JSON cache under Jellyfin's application data directory at `plugins/MovieRatings`. The previous `/config/data` cache files are migrated automatically on first access when they are found in the Jellyfin data directory. The legacy web badge injection instructions below are Docker-specific and are not required for rating collection.
 
 ```yaml
 # docker-compose.yml
@@ -62,8 +62,8 @@ services:
     volumes:
       - ./scripts/index.html:/jellyfin/jellyfin-web/index.html:ro
       - ./scripts/rt-popcorn.js:/jellyfin/jellyfin-web/rt-popcorn.js:ro
-      - ./config/data/rt_item_scores.json:/jellyfin/jellyfin-web/rt_item_scores.json:ro
-      - ./config/data/rt_certified_critics.json:/jellyfin/jellyfin-web/rt_certified_critics.json:ro
+      - ./config/data/plugins/MovieRatings/rt_item_scores.json:/jellyfin/jellyfin-web/rt_item_scores.json:ro
+      - ./config/data/plugins/MovieRatings/rt_certified_critics.json:/jellyfin/jellyfin-web/rt_certified_critics.json:ro
 ```
 
 The `index.html` is a copy of Jellyfin's original with a single `<script defer src="rt-popcorn.js"></script>` tag added before `</body>`. The custom CSS for the rating icons goes in **Dashboard > Branding > Custom CSS**.
@@ -98,6 +98,8 @@ This plugin is not endorsed by or affiliated with IMDb or Rotten Tomatoes.
 ```bash
 dotnet build src/Jellyfin.Plugin.ImdbRatings.csproj -c Release -o ./output
 ```
+
+The Jellyfin 12 build requires the .NET 10 SDK and references Jellyfin.Controller/Model 12.0.0. The output DLL is packaged without Jellyfin runtime assemblies; Jellyfin supplies those at load time.
 
 ## License
 
