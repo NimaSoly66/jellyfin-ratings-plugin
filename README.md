@@ -53,7 +53,7 @@ Go to **Dashboard > Plugins > Movie Ratings (IMDb + RT)**:
 
 ## RT Badges Setup (advanced)
 
-The RT task stores its JSON cache under Jellyfin's application data directory at `plugins/MovieRatings`. The previous `/config/data` cache files are migrated automatically on first access when they are found in the Jellyfin data directory. The legacy web badge injection instructions below are Docker-specific and are not required for rating collection.
+The RT task and IMDb chart cache use Jellyfin's application data directory at `plugins/MovieRatings` (for a standard Windows tray install: `%ProgramData%\\Jellyfin\\Server\\data\\plugins\\MovieRatings`). Legacy cache files located directly in Jellyfin's data directory are moved into this folder on first access, without overwriting files already there. The legacy web badge injection instructions below are Docker-specific and are not required for rating collection.
 
 ```yaml
 # docker-compose.yml
