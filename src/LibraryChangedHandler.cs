@@ -143,7 +143,7 @@ public class LibraryChangedHandler : IHostedService, IDisposable
 
     private static (int score, bool certified, int? criticScore, bool criticCertified, bool verifiedHot)? ParseScorecard(string html)
     {
-        var match = Regex.Match(html, @"<script\s+id=""media-scorecard-json""[^>]*>(.*?)</script>", RegexOptions.Singleline);
+        var match = Regex.Match(html, @"<script[^>]*id=""media-scorecard-json""[^>]*>(.*?)</script>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
         if (!match.Success) return null;
         try
         {
@@ -191,21 +191,20 @@ public class LibraryChangedHandler : IHostedService, IDisposable
         };
         await File.WriteAllTextAsync(itemScoresPath, JsonSerializer.Serialize(scores)).ConfigureAwait(false);
 
-        // Update certified critics
-        if (criticCertified)
+        // Keep the legacy ID list in sync for existing web badge scripts.
+        var critics = new List<string>();
+        if (File.Exists(certCriticsPath))
         {
-            var critics = new List<string>();
-            if (File.Exists(certCriticsPath))
-            {
-                var json = await File.ReadAllTextAsync(certCriticsPath).ConfigureAwait(false);
-                critics = JsonSerializer.Deserialize<List<string>>(json) ?? new();
-            }
-            if (!critics.Contains(jfId))
-            {
-                critics.Add(jfId);
-                await File.WriteAllTextAsync(certCriticsPath, JsonSerializer.Serialize(critics)).ConfigureAwait(false);
-            }
+            var json = await File.ReadAllTextAsync(certCriticsPath).ConfigureAwait(false);
+            critics = JsonSerializer.Deserialize<List<string>>(json) ?? new();
         }
+
+        if (criticCertified && !critics.Contains(jfId))
+            critics.Add(jfId);
+        else if (!criticCertified)
+            critics.Remove(jfId);
+
+        await File.WriteAllTextAsync(certCriticsPath, JsonSerializer.Serialize(critics)).ConfigureAwait(false);
     }
 
     private static List<string> GetSlugVariants(string title, int? year)
