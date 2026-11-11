@@ -33,19 +33,19 @@ jobs:
             -p:FileVersion=1.4.0.0 \
             -o ./output
 
-      - name: Package plugin
+      - name: Prepare plugin package
         run: |
           mkdir -p package
           cp output/Jellyfin.Plugin.ImdbRatings.dll package/
           cp LICENSE package/
           cp README.md package/
-          cd package
-          zip -r ../jellyfin-imdb-plugin-jellyfin12-1.4.0.0.zip .
 
+      # GitHub Actions creates the downloadable ZIP itself.
+      # Upload the package directory to avoid a ZIP-inside-a-ZIP artifact.
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: jellyfin-imdb-plugin-jellyfin12-1.4.0.0
-          path: jellyfin-imdb-plugin-jellyfin12-1.4.0.0.zip
+          path: package/
           if-no-files-found: error
           retention-days: 30
