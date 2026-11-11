@@ -26,6 +26,11 @@ public class RtAudienceEntry
 
     [System.Text.Json.Serialization.JsonPropertyName("verifiedHot")]
     public bool VerifiedHot { get; set; }
+
+    // Distinguishes a successfully checked scorecard with no critic score
+    // from an old audience-only cache entry that still needs upgrading.
+    [System.Text.Json.Serialization.JsonPropertyName("criticScoreFetched")]
+    public bool CriticScoreFetched { get; set; }
 }
 
 public class RtScoresFetchTask : IScheduledTask
@@ -91,8 +96,7 @@ public class RtScoresFetchTask : IScheduledTask
 
             // Reuse complete cache entries; older audience-only entries are refreshed
             // once so the critic score and both certification flags can be populated.
-            if (existingScores.TryGetValue(jfId, out var cached) &&
-                slugCache.ContainsKey(imdbId) && cached.CriticScore.HasValue)
+            if (existingScores.TryGetValue(jfId, out var cached) && cached.CriticScoreFetched)
             {
                 itemScores[jfId] = cached;
                 if (cached.CriticCertified)
@@ -116,6 +120,7 @@ public class RtScoresFetchTask : IScheduledTask
                     CriticScore = scorecard.CriticScore,
                     CriticCertified = scorecard.CriticCertified,
                     VerifiedHot = scorecard.VerifiedHot,
+                    CriticScoreFetched = true,
                 };
                 if (scorecard.CriticCertified)
                 {
@@ -238,7 +243,16 @@ public class RtScoresFetchTask : IScheduledTask
             if (!int.TryParse(audScoreEl.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var audScore))
                 return null;
             var audCertified = aud.TryGetProperty("certified", out var ac) && ac.ValueKind == JsonValueKind.True;
-            var verifiedHot = audCertified;
+            // RT exposes Verified Hot as the audience-side certified designation.
+            // Prefer the explicit status fields when present, with "certified" as
+            // the compatible fallback used by the current scorecard payload.
+            var verifiedHot = aud.TryGetProperty("verifiedHot", out var vh) && vh.ValueKind == JsonValueKind.True;
+            if (!verifiedHot && aud.TryGetProperty("certifiedFresh", out var cf) &&
+                cf.ValueKind == JsonValueKind.String &&
+                string.Equals(cf.GetString(), "certified", StringComparison.OrdinalIgnoreCase))
+                verifiedHot = true;
+            if (!verifiedHot)
+                verifiedHot = audCertified;
 
             int? criticScore = null;
             var criticCertified = false;
