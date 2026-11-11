@@ -73,7 +73,8 @@ public class RtScoresFetchTask : IScheduledTask
             ?? new Dictionary<string, RtAudienceEntry>();
 
         var itemScores = new Dictionary<string, RtAudienceEntry>();
-        var certifiedCritics = new List<string>();
+        var certifiedCritics = await LoadJsonAsync<List<string>>(CertifiedCriticsPath, cancellationToken)
+            ?? new List<string>();
 
         for (int i = 0; i < movies.Count; i++)
         {
@@ -117,7 +118,14 @@ public class RtScoresFetchTask : IScheduledTask
                     VerifiedHot = scorecard.VerifiedHot,
                 };
                 if (scorecard.CriticCertified)
-                    certifiedCritics.Add(jfId);
+                {
+                    if (!certifiedCritics.Contains(jfId))
+                        certifiedCritics.Add(jfId);
+                }
+                else
+                {
+                    certifiedCritics.Remove(jfId);
+                }
             }
 
             progress.Report((double)(i + 1) / movies.Count * 100);
@@ -217,8 +225,8 @@ public class RtScoresFetchTask : IScheduledTask
 
             var html = await response.Content.ReadAsStringAsync(cancellationToken);
             var match = Regex.Match(html,
-                @"<script\s+id=""media-scorecard-json""[^>]*>(.*?)</script>",
-                RegexOptions.Singleline);
+                @"<script[^>]*id=""media-scorecard-json""[^>]*>(.*?)</script>",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase);
             if (!match.Success) return null;
 
             using var doc = JsonDocument.Parse(match.Groups[1].Value);
