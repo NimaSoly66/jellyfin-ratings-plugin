@@ -77,7 +77,7 @@ public class LibraryChangedHandler : IHostedService, IDisposable
                 {
                     // Append to rt_item_scores.json
                     var jfId = movie.Id.ToString("N");
-                    await AppendRtScore(jfId, rtResult.Value.score, rtResult.Value.certified, rtResult.Value.criticCertified).ConfigureAwait(false);
+                    await AppendRtScore(jfId, rtResult.Value.score, rtResult.Value.certified, rtResult.Value.criticScore, rtResult.Value.criticCertified, rtResult.Value.verifiedHot).ConfigureAwait(false);
                     _logger.LogInformation("  RT audience: {Score}%, certified: {Cert}", rtResult.Value.score, rtResult.Value.certified);
                 }
             }
@@ -88,7 +88,7 @@ public class LibraryChangedHandler : IHostedService, IDisposable
         }
     }
 
-    private static async Task<(int score, bool certified, bool criticCertified)?> FetchRtForMovie(string title, int? year)
+    private static async Task<(int score, bool certified, int? criticScore, bool criticCertified, bool verifiedHot)?> FetchRtForMovie(string title, int? year)
     {
         var slugs = GetSlugVariants(title, year);
         foreach (var slug in slugs)
@@ -101,7 +101,7 @@ public class LibraryChangedHandler : IHostedService, IDisposable
         return await TrySearchRt(title, year).ConfigureAwait(false);
     }
 
-    private static async Task<(int score, bool certified, bool criticCertified)?> TryFetchSlug(string slug)
+    private static async Task<(int score, bool certified, int? criticScore, bool criticCertified, bool verifiedHot)?> TryFetchSlug(string slug)
     {
         try
         {
@@ -115,7 +115,7 @@ public class LibraryChangedHandler : IHostedService, IDisposable
         catch { return null; }
     }
 
-    private static async Task<(int score, bool certified, bool criticCertified)?> TrySearchRt(string title, int? year)
+    private static async Task<(int score, bool certified, int? criticScore, bool criticCertified, bool verifiedHot)?> TrySearchRt(string title, int? year)
     {
         try
         {
@@ -141,7 +141,7 @@ public class LibraryChangedHandler : IHostedService, IDisposable
         return null;
     }
 
-    private static (int score, bool certified, bool criticCertified)? ParseScorecard(string html)
+    private static (int score, bool certified, int? criticScore, bool criticCertified, bool verifiedHot)? ParseScorecard(string html)
     {
         var match = Regex.Match(html, @"<script\s+id=""media-scorecard-json""[^>]*>(.*?)</script>", RegexOptions.Singleline);
         if (!match.Success) return null;
@@ -151,20 +151,28 @@ public class LibraryChangedHandler : IHostedService, IDisposable
             var root = doc.RootElement;
             if (!root.TryGetProperty("audienceScore", out var aud)) return null;
             if (!aud.TryGetProperty("score", out var scoreEl)) return null;
-            var score = int.Parse(scoreEl.GetString()!, CultureInfo.InvariantCulture);
-            var certified = aud.TryGetProperty("certified", out var ac) && ac.GetBoolean();
+            if (!int.TryParse(scoreEl.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var score))
+                return null;
+            var certified = aud.TryGetProperty("certified", out var ac) && ac.ValueKind == JsonValueKind.True;
+            var verifiedHot = certified;
+            int? criticScore = null;
             var criticCertified = false;
-            if (root.TryGetProperty("criticsScore", out var crit) && crit.TryGetProperty("certified", out var cc))
-                criticCertified = cc.GetBoolean();
-            return (score, certified, criticCertified);
+            if (root.TryGetProperty("criticsScore", out var crit))
+            {
+                if (crit.TryGetProperty("score", out var criticScoreEl) &&
+                    int.TryParse(criticScoreEl.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCriticScore))
+                    criticScore = parsedCriticScore;
+                criticCertified = crit.TryGetProperty("certified", out var cc) && cc.ValueKind == JsonValueKind.True;
+            }
+            return (score, certified, criticScore, criticCertified, verifiedHot);
         }
         catch { return null; }
     }
 
-    private static async Task AppendRtScore(string jfId, int score, bool certified, bool criticCertified)
+    private static async Task AppendRtScore(string jfId, int score, bool certified, int? criticScore, bool criticCertified, bool verifiedHot)
     {
-        const string itemScoresPath = "/config/data/rt_item_scores.json";
-        const string certCriticsPath = "/config/data/rt_certified_critics.json";
+        var itemScoresPath = Plugin.DataFile("rt_item_scores.json");
+        var certCriticsPath = Plugin.DataFile("rt_certified_critics.json");
 
         // Update item scores
         var scores = new Dictionary<string, RtAudienceEntry>();
@@ -173,7 +181,14 @@ public class LibraryChangedHandler : IHostedService, IDisposable
             var json = await File.ReadAllTextAsync(itemScoresPath).ConfigureAwait(false);
             scores = JsonSerializer.Deserialize<Dictionary<string, RtAudienceEntry>>(json) ?? new();
         }
-        scores[jfId] = new RtAudienceEntry { Score = score, Certified = certified };
+        scores[jfId] = new RtAudienceEntry
+        {
+            Score = score,
+            Certified = certified,
+            CriticScore = criticScore,
+            CriticCertified = criticCertified,
+            VerifiedHot = verifiedHot,
+        };
         await File.WriteAllTextAsync(itemScoresPath, JsonSerializer.Serialize(scores)).ConfigureAwait(false);
 
         // Update certified critics
